@@ -3373,9 +3373,12 @@ function apiCall(method, payload) {
           showUnregisteredGate();
         })
         .catch(function(error) {
-          console.error(error);
-          setAuthMessage('LINEアカウントの確認に失敗しました。ページを閉じて、もう一度お試しください。');
-        });
+  console.error(error);
+  setAuthMessage(
+    'LINEアカウントの確認エラー：' +
+    (error && error.message ? error.message : String(error))
+  );
+});
 
     } catch (error) {
       console.error(error);
