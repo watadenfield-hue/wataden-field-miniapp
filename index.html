@@ -3360,7 +3360,7 @@ function apiCall(method, payload) {
         });
 
       // 会員判定は必ずサーバー側でIDトークンを検証
-      apiCall('getLineAccountStatus', lineIdToken)
+      apiCall('getLineAccountStatus', { idToken: lineIdToken })
         .then(function(result) {
           miniAppReady = true;
 
