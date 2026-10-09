@@ -1333,7 +1333,7 @@
           class="reserve-button"
           onclick="startReservation()">
 
-          この内容で予約する
+          予約内容を確認する
 
         </button>
 
@@ -1361,8 +1361,11 @@
           <div
             id="lineAuthStatus"
             class="registration-message-text">
-            LINEアカウントを確認しています…
+            予約内容を確認しました。利用状況を選択してください。
           </div>
+          <div
+            id="accountChoiceScheduleSummary"
+            style="display:none; margin-top:12px; white-space:pre-line; font-weight:600;"></div>
         </div>
 
         <div id="existingLinkArea" style="display:none; margin-top:20px;">
@@ -1389,8 +1392,17 @@
           <button
             class="secondary-button"
             type="button"
-            onclick="newUser()">
+            onclick="beginFirstTimeFlow()">
             初めて利用する方はこちら
+          </button>
+        </div>
+
+        <div id="registeredAccountButtonArea" style="display:none; margin-top:12px;">
+          <button
+            class="reserve-button"
+            type="button"
+            onclick="beginRegisteredFlow()">
+            利用登録済みの方はこちら
           </button>
         </div>
 
@@ -3307,8 +3319,6 @@ function apiCall(method, payload) {
     hideAllAreas();
     try {
       await liff.init({ liffId: WATADEN_LIFF_ID });
-
-      // 予約枠は未ログインでも閲覧できるように、先に取得する。
       try {
         schedules = await apiCall('getSchedules') || [];
       } catch (scheduleError) {
@@ -3317,7 +3327,7 @@ function apiCall(method, payload) {
         alert('予定の読み込みに失敗しました。ページを再読み込みしてください。');
       }
 
-      // ログイン前はコンテンツ・日程を自由に閲覧できる。
+      restorePendingSchedule_();
       if (!liff.isLoggedIn()) {
         lineIdToken = '';
         currentCustomer = null;
@@ -3326,18 +3336,16 @@ function apiCall(method, payload) {
         return;
       }
 
-      lineIdToken = liff.getIDToken();
-      if (!lineIdToken) {
-        throw new Error('LINEログイン情報を取得できませんでした。');
-      }
+      lineIdToken = liff.getIDToken() || '';
+      if (!lineIdToken) throw new Error('LINEログイン情報を取得できませんでした。');
 
-      // ログイン後に、予約予定を復元してから会員状態を確認する。
-      restorePendingSchedule_();
+      const intent = getPendingIntent_();
       const result = await apiCall('getLineAccountStatus', { idToken: lineIdToken });
       miniAppReady = true;
 
       if (result && result.registered) {
         currentCustomer = result.customer;
+        clearPendingIntent_();
         if (selectedSchedule) {
           openReservationArea(currentCustomer.participantName);
           clearPendingSchedule_();
@@ -3347,7 +3355,18 @@ function apiCall(method, payload) {
         return;
       }
 
-      showUnregisteredGate();
+      currentCustomer = null;
+      if (intent === 'first') {
+        clearPendingIntent_();
+        newUser();
+      } else if (intent === 'registered') {
+        clearPendingIntent_();
+        showAccountChoice('このLINEアカウントの利用登録が確認できませんでした。初めて利用する方は、左の「初めて利用する方はこちら」からお進みください。');
+      } else if (selectedSchedule) {
+        showAccountChoice();
+      } else {
+        showPublicHome();
+      }
     } catch (error) {
       console.error(error);
       hideAllAreas();
@@ -3397,16 +3416,90 @@ function apiCall(method, payload) {
     }
   }
 
-  function showUnregisteredGate() {
+  function showAccountChoice(message) {
     hideAllAreas();
     document.getElementById('registrationCheckArea').style.display = 'block';
-    setAuthMessage(
-      'このLINEアカウントはまだ利用登録されていません。<br>' +
-      '初めて利用する方は、利用登録をお願いします。'
-    );
+    setAuthMessage(message || '予約内容を確認しました。利用状況を選択してください。');
+    const summary = document.getElementById('accountChoiceScheduleSummary');
+    if (summary && selectedSchedule) {
+      summary.textContent = '選択内容：' + (selectedSchedule.content || '') + '\n日付：' + formatDate(selectedSchedule.date) + '\n時間：' + (selectedSchedule.start || '') + '〜' + (selectedSchedule.end || '');
+      summary.style.display = 'block';
+    } else if (summary) {
+      summary.style.display = 'none';
+    }
     const existingLinkArea = document.getElementById('existingLinkArea');
     if (existingLinkArea) existingLinkArea.style.display = 'none';
     document.getElementById('newAccountButtonArea').style.display = 'block';
+    document.getElementById('registeredAccountButtonArea').style.display = 'block';
+  }
+
+  function showUnregisteredGate() {
+    showAccountChoice('このLINEアカウントはまだ利用登録されていません。初めて利用する方は利用登録へ進んでください。');
+  }
+
+  function savePendingIntent_(intent) {
+    try { sessionStorage.setItem('watadenPendingIntent', intent); } catch (e) {}
+  }
+
+  function getPendingIntent_() {
+    try { return sessionStorage.getItem('watadenPendingIntent') || ''; } catch (e) { return ''; }
+  }
+
+  function clearPendingIntent_() {
+    try { sessionStorage.removeItem('watadenPendingIntent'); } catch (e) {}
+  }
+
+  function beginFirstTimeFlow() {
+    savePendingSchedule_();
+    savePendingIntent_('first');
+    if (!liff.isLoggedIn()) {
+      liff.login();
+      return;
+    }
+    lineIdToken = liff.getIDToken() || lineIdToken;
+    continueAccountFlow_('first');
+  }
+
+  function beginRegisteredFlow() {
+    savePendingSchedule_();
+    savePendingIntent_('registered');
+    if (!liff.isLoggedIn()) {
+      liff.login();
+      return;
+    }
+    lineIdToken = liff.getIDToken() || lineIdToken;
+    continueAccountFlow_('registered');
+  }
+
+  async function continueAccountFlow_(intent) {
+    if (!lineIdToken) {
+      showAccountChoice('LINEログイン情報を取得できませんでした。もう一度お試しください。');
+      return;
+    }
+    try {
+      const result = await apiCall('getLineAccountStatus', { idToken: lineIdToken });
+      if (result && result.registered && result.customer) {
+        currentCustomer = result.customer;
+        clearPendingIntent_();
+        if (selectedSchedule) {
+          openReservationArea(currentCustomer.participantName);
+          clearPendingSchedule_();
+        } else {
+          showAuthenticatedHome();
+        }
+        return;
+      }
+      currentCustomer = null;
+      clearPendingIntent_();
+      if (intent === 'first') {
+        newUser();
+      } else {
+        showAccountChoice('このLINEアカウントの利用登録が確認できませんでした。初めて利用する方は「初めて利用する方はこちら」からお進みください。');
+      }
+    } catch (error) {
+      console.error(error);
+      showAccountChoice(error && error.message ? error.message : '利用登録の確認に失敗しました。もう一度お試しください。');
+    }
   }
 
   function linkExistingAccount() {
@@ -3451,35 +3544,13 @@ function apiCall(method, payload) {
       });
   }
 
-  // 予約開始：登録済みユーザーだけがここまで進める
+  // 日程を選んだ後に利用状況を選択してもらう。ここではまだログインしない。
   function startReservation() {
     if (!selectedSchedule) {
       alert('予約する日程を選択してください。');
       return;
     }
-
-    if (!liff.isLoggedIn()) {
-      savePendingSchedule_();
-      liff.login();
-      return;
-    }
-
-    if (!lineIdToken) {
-      lineIdToken = liff.getIDToken() || '';
-    }
-    if (!lineIdToken) {
-      savePendingSchedule_();
-      alert('LINEログイン情報を取得できませんでした。もう一度お試しください。');
-      return;
-    }
-
-    if (!currentCustomer) {
-      savePendingSchedule_();
-      showUnregisteredGate();
-      return;
-    }
-
-    openReservationArea(currentCustomer.participantName);
+    showAccountChoice();
   }
 
   function openReservationArea(participantName) {
@@ -3631,7 +3702,7 @@ function apiCall(method, payload) {
   }
 
   function backToRegistrationCheck() {
-    showUnregisteredGate();
+    showAccountChoice();
   }
 
   function hideAllAreas() {
