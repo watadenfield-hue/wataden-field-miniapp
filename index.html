@@ -1494,15 +1494,14 @@
 
 
         <label class="form-label">
-          保護者氏名
-          <span class="required">必須</span>
+          保護者氏名（任意）
         </label>
 
         <input
           type="text"
           id="registrationParentName"
           class="form-input"
-          placeholder="保護者氏名を入力してください">
+          placeholder="必要な場合は入力してください">
 
 
         <label class="form-label">
@@ -1515,21 +1514,7 @@
           id="registrationParticipantName"
           class="form-input"
           placeholder="参加者氏名を入力してください">
-
-
-        <label class="form-label">
-          メールアドレス
-          <span class="required">必須</span>
-        </label>
-
-        <input
-          type="email"
-          id="registrationEmail"
-          class="form-input"
-          placeholder="example@example.com">
-
-
-        <label class="form-label">
+<label class="form-label">
           電話番号
           <span class="required">必須</span>
         </label>
@@ -2616,8 +2601,6 @@ function selectContent(content) {
       const participantName =
         document.getElementById("registrationParticipantName").value.trim();
 
-      const email =
-        document.getElementById("registrationEmail").value.trim();
 
       const phone =
         document.getElementById("registrationPhone").value.trim();
@@ -2634,18 +2617,8 @@ function selectContent(content) {
       const source =
         document.getElementById("registrationSource").value;
 
-      if (!parentName) {
-        alert("保護者氏名を入力してください。");
-        return;
-      }
-
       if (!participantName) {
         alert("参加者氏名を入力してください。");
-        return;
-      }
-
-      if (!email) {
-        alert("メールアドレスを入力してください。");
         return;
       }
 
@@ -2682,7 +2655,6 @@ function selectContent(content) {
       const data = {
         parentName: parentName,
         participantName: participantName,
-        email: email,
         phone: phone,
         school: school,
         club: club,
@@ -3332,15 +3304,25 @@ function apiCall(method, payload) {
   });
 
   async function initializeWatadenMiniApp() {
-    setAuthMessage('LINEアカウントを確認しています…');
     hideAllAreas();
-    document.getElementById('registrationCheckArea').style.display = 'block';
-
     try {
       await liff.init({ liffId: WATADEN_LIFF_ID });
 
+      // 予約枠は未ログインでも閲覧できるように、先に取得する。
+      try {
+        schedules = await apiCall('getSchedules') || [];
+      } catch (scheduleError) {
+        console.error(scheduleError);
+        schedules = [];
+        alert('予定の読み込みに失敗しました。ページを再読み込みしてください。');
+      }
+
+      // ログイン前はコンテンツ・日程を自由に閲覧できる。
       if (!liff.isLoggedIn()) {
-        liff.login();
+        lineIdToken = '';
+        currentCustomer = null;
+        miniAppReady = true;
+        showPublicHome();
         return;
       }
 
@@ -3349,41 +3331,56 @@ function apiCall(method, payload) {
         throw new Error('LINEログイン情報を取得できませんでした。');
       }
 
-      // 予定取得
-      apiCall('getSchedules')
-        .then(function(data) {
-          schedules = data || [];
-        })
-        .catch(function(error) {
-          console.error(error);
-          alert('予定の読み込みに失敗しました。');
-        });
+      // ログイン後に、予約予定を復元してから会員状態を確認する。
+      restorePendingSchedule_();
+      const result = await apiCall('getLineAccountStatus', { idToken: lineIdToken });
+      miniAppReady = true;
 
-      // 会員判定は必ずサーバー側でIDトークンを検証
-      apiCall('getLineAccountStatus', { idToken: lineIdToken })
-        .then(function(result) {
-          miniAppReady = true;
+      if (result && result.registered) {
+        currentCustomer = result.customer;
+        if (selectedSchedule) {
+          openReservationArea(currentCustomer.participantName);
+          clearPendingSchedule_();
+        } else {
+          showAuthenticatedHome();
+        }
+        return;
+      }
 
-          if (result && result.registered) {
-            currentCustomer = result.customer;
-            showAuthenticatedHome();
-            return;
-          }
-
-          showUnregisteredGate();
-        })
-        .catch(function(error) {
-  console.error(error);
-  setAuthMessage(
-    'LINEアカウントの確認エラー：' +
-    (error && error.message ? error.message : String(error))
-  );
-});
-
+      showUnregisteredGate();
     } catch (error) {
       console.error(error);
-      setAuthMessage('ミニアプリのログインに失敗しました。LIFF設定を確認してください。');
+      hideAllAreas();
+      document.getElementById('registrationCheckArea').style.display = 'block';
+      setAuthMessage('LINEの初期化に失敗しました。ページを閉じて、もう一度お試しください。');
     }
+  }
+
+  function showPublicHome() {
+    hideAllAreas();
+    document.getElementById('home').style.display = 'block';
+    const greeting = document.querySelector('#home .greeting p');
+    if (greeting) greeting.textContent = '参加したいコンテンツを選択してください。';
+  }
+
+  function savePendingSchedule_() {
+    if (!selectedSchedule) return;
+    try { sessionStorage.setItem('watadenPendingSchedule', JSON.stringify(selectedSchedule)); } catch (e) {}
+  }
+
+  function restorePendingSchedule_() {
+    try {
+      const raw = sessionStorage.getItem('watadenPendingSchedule');
+      if (!raw) return;
+      const pending = JSON.parse(raw);
+      if (!pending || !pending.id) return;
+      const matched = (schedules || []).find(function(item) { return String(item.id) === String(pending.id); });
+      selectedSchedule = matched || pending;
+    } catch (e) { console.error(e); }
+  }
+
+  function clearPendingSchedule_() {
+    try { sessionStorage.removeItem('watadenPendingSchedule'); } catch (e) {}
   }
 
   function setAuthMessage(message) {
@@ -3405,10 +3402,10 @@ function apiCall(method, payload) {
     document.getElementById('registrationCheckArea').style.display = 'block';
     setAuthMessage(
       'このLINEアカウントはまだ利用登録されていません。<br>' +
-      '登録済みの方はメールアドレスを連携してください。<br>' +
-      '未登録の方は、先に利用登録をお願いします。'
+      '初めて利用する方は、利用登録をお願いします。'
     );
-    document.getElementById('existingLinkArea').style.display = 'block';
+    const existingLinkArea = document.getElementById('existingLinkArea');
+    if (existingLinkArea) existingLinkArea.style.display = 'none';
     document.getElementById('newAccountButtonArea').style.display = 'block';
   }
 
@@ -3456,12 +3453,32 @@ function apiCall(method, payload) {
 
   // 予約開始：登録済みユーザーだけがここまで進める
   function startReservation() {
-    if (!selectedSchedule) return;
-    if (!lineIdToken || !currentCustomer) {
-      alert('利用登録が確認できません。先に利用登録を行ってください。');
+    if (!selectedSchedule) {
+      alert('予約する日程を選択してください。');
+      return;
+    }
+
+    if (!liff.isLoggedIn()) {
+      savePendingSchedule_();
+      liff.login();
+      return;
+    }
+
+    if (!lineIdToken) {
+      lineIdToken = liff.getIDToken() || '';
+    }
+    if (!lineIdToken) {
+      savePendingSchedule_();
+      alert('LINEログイン情報を取得できませんでした。もう一度お試しください。');
+      return;
+    }
+
+    if (!currentCustomer) {
+      savePendingSchedule_();
       showUnregisteredGate();
       return;
     }
+
     openReservationArea(currentCustomer.participantName);
   }
 
@@ -3544,7 +3561,6 @@ function apiCall(method, payload) {
   function submitNewRegistration() {
     const parentName = document.getElementById('registrationParentName').value.trim();
     const participantName = document.getElementById('registrationParticipantName').value.trim();
-    const email = document.getElementById('registrationEmail').value.trim();
     const phone = document.getElementById('registrationPhone').value.trim();
     const school = document.getElementById('registrationSchool').value.trim();
     const club = document.getElementById('registrationClub').value;
@@ -3555,9 +3571,7 @@ function apiCall(method, payload) {
       alert('LINEログイン情報を取得できません。');
       return;
     }
-    if (!parentName) return alert('保護者氏名を入力してください。');
     if (!participantName) return alert('参加者氏名を入力してください。');
-    if (!email) return alert('メールアドレスを入力してください。');
     if (!phone) return alert('電話番号を入力してください。');
     if (!school) return alert('所属園・小学校を入力してください。');
     if (!club) return alert('所属サッカークラブの有無を選択してください。');
@@ -3568,7 +3582,6 @@ function apiCall(method, payload) {
       idToken: lineIdToken,
       parentName: parentName,
       participantName: participantName,
-      email: email,
       phone: phone,
       school: school,
       club: club,
@@ -3594,7 +3607,13 @@ function apiCall(method, payload) {
         }
         currentCustomer = result.customer;
         miniAppReady = true;
-        showAuthenticatedHome();
+        if (!selectedSchedule) restorePendingSchedule_();
+        if (selectedSchedule) {
+          openReservationArea(currentCustomer.participantName);
+          clearPendingSchedule_();
+        } else {
+          showAuthenticatedHome();
+        }
         alert('利用登録が完了しました。次回から自動でログインされます。');
       })
       .catch(function(error) {
@@ -3628,13 +3647,13 @@ function apiCall(method, payload) {
   }
 
   function goHome() {
+    selectedContent = '';
+    selectedSchoolType = '';
     if (!currentCustomer || !lineIdToken) {
-      showUnregisteredGate();
+      showPublicHome();
       return;
     }
-    selectedContent = '';
-    hideAllAreas();
-    document.getElementById('home').style.display = 'block';
+    showAuthenticatedHome();
   }
 </script>
 
