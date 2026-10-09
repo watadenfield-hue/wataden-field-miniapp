@@ -1333,7 +1333,7 @@
           class="reserve-button"
           onclick="startReservation()">
 
-          予約内容を確認する
+          この内容で予約する
 
         </button>
 
@@ -1361,11 +1361,8 @@
           <div
             id="lineAuthStatus"
             class="registration-message-text">
-            予約内容を確認しました。利用状況を選択してください。
+            LINEアカウントを確認しています…
           </div>
-          <div
-            id="accountChoiceScheduleSummary"
-            style="display:none; margin-top:12px; white-space:pre-line; font-weight:600;"></div>
         </div>
 
         <div id="existingLinkArea" style="display:none; margin-top:20px;">
@@ -1392,17 +1389,8 @@
           <button
             class="secondary-button"
             type="button"
-            onclick="beginFirstTimeFlow()">
+            onclick="newUser()">
             初めて利用する方はこちら
-          </button>
-        </div>
-
-        <div id="registeredAccountButtonArea" style="display:none; margin-top:12px;">
-          <button
-            class="reserve-button"
-            type="button"
-            onclick="beginRegisteredFlow()">
-            利用登録済みの方はこちら
           </button>
         </div>
 
@@ -1474,36 +1462,12 @@
          初回登録
     ========================= -->
 
-    <section
-      id="newRegistrationArea"
-      class="detail-area">
-
-      <button
-        class="back-button"
-        onclick="backToRegistrationCheck()">
-
-        ← 戻る
-
-      </button>
-
-
+    <section id="newRegistrationArea" class="detail-area">
+      <button class="back-button" onclick="backToRegistrationCheck()">← 戻る</button>
       <div class="detail-card">
-
-        <div class="detail-date">
-          初めてご利用の方
-        </div>
-
-
-        <div class="detail-name">
-          ワタデンフィールド利用登録
-        </div>
-
-
-        <p class="form-help">
-          初回のみ、利用登録をお願いいたします。<br>
-          登録後は、次回から簡単にご予約いただけます。
-        </p>
-
+        <div class="detail-date">初めてご利用の方</div>
+        <div class="detail-name">ワタデンフィールド利用登録</div>
+        <p class="form-help">初回のみ、4項目の登録をお願いします。<br>次回からはLINEでそのまま予約できます。</p>
 
         <label class="form-label">利用者氏名 <span class="required">必須</span></label>
         <input type="text" id="registrationParticipantName" class="form-input" autocomplete="name" placeholder="利用者氏名を入力してください">
@@ -1517,19 +1481,9 @@
         <label class="form-label">緊急連絡先（電話番号） <span class="required">必須</span></label>
         <input type="tel" id="registrationPhone" class="form-input" autocomplete="tel" placeholder="090-0000-0000">
 
-        <button
-          type="button"
-          class="reserve-button"
-          onclick="submitNewRegistration()">
-
-          利用登録する
-
-        </button>
-
+        <button type="button" class="reserve-button" onclick="submitNewRegistration()">利用登録する</button>
       </div>
-
     </section>
-
 
     <!-- =========================
          予約入力
@@ -1606,10 +1560,10 @@
           placeholder="090-0000-0000">
 
 
-        <div id="contentQuestions"></div>
+        <div id="contentQuestionsArea"></div>
 
         <label class="form-label" id="reservationMemoLabel">
-          備考
+          備考欄（任意）
         </label>
 
 
@@ -1663,8 +1617,6 @@
 
 
         <div class="confirm-box">
-          <div class="confirm-label">コンテンツ質問への回答</div>
-          <div id="confirmContentAnswers" class="confirm-value"></div>
 
           <div class="confirm-label">
             日付
@@ -2509,6 +2461,8 @@ function selectContent(content) {
       const participantName =
         document.getElementById("registrationParticipantName").value.trim();
 
+      const email =
+        document.getElementById("registrationEmail").value.trim();
 
       const phone =
         document.getElementById("registrationPhone").value.trim();
@@ -2525,8 +2479,18 @@ function selectContent(content) {
       const source =
         document.getElementById("registrationSource").value;
 
+      if (!parentName) {
+        alert("保護者氏名を入力してください。");
+        return;
+      }
+
       if (!participantName) {
         alert("参加者氏名を入力してください。");
+        return;
+      }
+
+      if (!email) {
+        alert("メールアドレスを入力してください。");
         return;
       }
 
@@ -2563,6 +2527,7 @@ function selectContent(content) {
       const data = {
         parentName: parentName,
         participantName: participantName,
+        email: email,
         phone: phone,
         school: school,
         club: club,
@@ -3212,90 +3177,55 @@ function apiCall(method, payload) {
   });
 
   async function initializeWatadenMiniApp() {
+    setAuthMessage('LINEアカウントを確認しています…');
     hideAllAreas();
+    document.getElementById('registrationCheckArea').style.display = 'block';
+
     try {
       await liff.init({ liffId: WATADEN_LIFF_ID });
-      try {
-        schedules = await apiCall('getSchedules') || [];
-      } catch (scheduleError) {
-        console.error(scheduleError);
-        schedules = [];
-        alert('予定の読み込みに失敗しました。ページを再読み込みしてください。');
-      }
 
-      restorePendingSchedule_();
       if (!liff.isLoggedIn()) {
-        lineIdToken = '';
-        currentCustomer = null;
-        miniAppReady = true;
-        showPublicHome();
+        liff.login();
         return;
       }
 
-      lineIdToken = liff.getIDToken() || '';
-      if (!lineIdToken) throw new Error('LINEログイン情報を取得できませんでした。');
-
-      const intent = getPendingIntent_();
-      const result = await apiCall('getLineAccountStatus', { idToken: lineIdToken });
-      miniAppReady = true;
-
-      if (result && result.registered) {
-        currentCustomer = result.customer;
-        clearPendingIntent_();
-        if (selectedSchedule) {
-          openReservationArea(currentCustomer.participantName);
-          clearPendingSchedule_();
-        } else {
-          showAuthenticatedHome();
-        }
-        return;
+      lineIdToken = liff.getIDToken();
+      if (!lineIdToken) {
+        throw new Error('LINEログイン情報を取得できませんでした。');
       }
 
-      currentCustomer = null;
-      if (intent === 'first') {
-        clearPendingIntent_();
-        newUser();
-      } else if (intent === 'registered') {
-        clearPendingIntent_();
-        showAccountChoice('このLINEアカウントの利用登録が確認できませんでした。初めて利用する方は、左の「初めて利用する方はこちら」からお進みください。');
-      } else if (selectedSchedule) {
-        showAccountChoice();
-      } else {
-        showPublicHome();
-      }
+      // 予定取得
+      apiCall('getSchedules')
+        .then(function(data) {
+          schedules = data || [];
+        })
+        .catch(function(error) {
+          console.error(error);
+          alert('予定の読み込みに失敗しました。');
+        });
+
+      // 会員判定は必ずサーバー側でIDトークンを検証
+      apiCall('getLineAccountStatus', lineIdToken)
+        .then(function(result) {
+          miniAppReady = true;
+
+          if (result && result.registered) {
+            currentCustomer = result.customer;
+            showAuthenticatedHome();
+            return;
+          }
+
+          showUnregisteredGate();
+        })
+        .catch(function(error) {
+          console.error(error);
+          setAuthMessage('LINEアカウントの確認に失敗しました。ページを閉じて、もう一度お試しください。');
+        });
+
     } catch (error) {
       console.error(error);
-      hideAllAreas();
-      document.getElementById('registrationCheckArea').style.display = 'block';
-      setAuthMessage('LINEの初期化に失敗しました。ページを閉じて、もう一度お試しください。');
+      setAuthMessage('ミニアプリのログインに失敗しました。LIFF設定を確認してください。');
     }
-  }
-
-  function showPublicHome() {
-    hideAllAreas();
-    document.getElementById('home').style.display = 'block';
-    const greeting = document.querySelector('#home .greeting p');
-    if (greeting) greeting.textContent = '参加したいコンテンツを選択してください。';
-  }
-
-  function savePendingSchedule_() {
-    if (!selectedSchedule) return;
-    try { sessionStorage.setItem('watadenPendingSchedule', JSON.stringify(selectedSchedule)); } catch (e) {}
-  }
-
-  function restorePendingSchedule_() {
-    try {
-      const raw = sessionStorage.getItem('watadenPendingSchedule');
-      if (!raw) return;
-      const pending = JSON.parse(raw);
-      if (!pending || !pending.id) return;
-      const matched = (schedules || []).find(function(item) { return String(item.id) === String(pending.id); });
-      selectedSchedule = matched || pending;
-    } catch (e) { console.error(e); }
-  }
-
-  function clearPendingSchedule_() {
-    try { sessionStorage.removeItem('watadenPendingSchedule'); } catch (e) {}
   }
 
   function setAuthMessage(message) {
@@ -3312,90 +3242,16 @@ function apiCall(method, payload) {
     }
   }
 
-  function showAccountChoice(message) {
+  function showUnregisteredGate() {
     hideAllAreas();
     document.getElementById('registrationCheckArea').style.display = 'block';
-    setAuthMessage(message || '予約内容を確認しました。利用状況を選択してください。');
-    const summary = document.getElementById('accountChoiceScheduleSummary');
-    if (summary && selectedSchedule) {
-      summary.textContent = '選択内容：' + (selectedSchedule.content || '') + '\n日付：' + formatDate(selectedSchedule.date) + '\n時間：' + (selectedSchedule.start || '') + '〜' + (selectedSchedule.end || '');
-      summary.style.display = 'block';
-    } else if (summary) {
-      summary.style.display = 'none';
-    }
-    const existingLinkArea = document.getElementById('existingLinkArea');
-    if (existingLinkArea) existingLinkArea.style.display = 'none';
+    setAuthMessage(
+      'このLINEアカウントはまだ利用登録されていません。<br>' +
+      '登録済みの方はメールアドレスを連携してください。<br>' +
+      '未登録の方は、先に利用登録をお願いします。'
+    );
+    document.getElementById('existingLinkArea').style.display = 'block';
     document.getElementById('newAccountButtonArea').style.display = 'block';
-    document.getElementById('registeredAccountButtonArea').style.display = 'block';
-  }
-
-  function showUnregisteredGate() {
-    showAccountChoice('このLINEアカウントはまだ利用登録されていません。初めて利用する方は利用登録へ進んでください。');
-  }
-
-  function savePendingIntent_(intent) {
-    try { sessionStorage.setItem('watadenPendingIntent', intent); } catch (e) {}
-  }
-
-  function getPendingIntent_() {
-    try { return sessionStorage.getItem('watadenPendingIntent') || ''; } catch (e) { return ''; }
-  }
-
-  function clearPendingIntent_() {
-    try { sessionStorage.removeItem('watadenPendingIntent'); } catch (e) {}
-  }
-
-  function beginFirstTimeFlow() {
-    savePendingSchedule_();
-    savePendingIntent_('first');
-    if (!liff.isLoggedIn()) {
-      liff.login();
-      return;
-    }
-    lineIdToken = liff.getIDToken() || lineIdToken;
-    continueAccountFlow_('first');
-  }
-
-  function beginRegisteredFlow() {
-    savePendingSchedule_();
-    savePendingIntent_('registered');
-    if (!liff.isLoggedIn()) {
-      liff.login();
-      return;
-    }
-    lineIdToken = liff.getIDToken() || lineIdToken;
-    continueAccountFlow_('registered');
-  }
-
-  async function continueAccountFlow_(intent) {
-    if (!lineIdToken) {
-      showAccountChoice('LINEログイン情報を取得できませんでした。もう一度お試しください。');
-      return;
-    }
-    try {
-      const result = await apiCall('getLineAccountStatus', { idToken: lineIdToken });
-      if (result && result.registered && result.customer) {
-        currentCustomer = result.customer;
-        clearPendingIntent_();
-        if (selectedSchedule) {
-          openReservationArea(currentCustomer.participantName);
-          clearPendingSchedule_();
-        } else {
-          showAuthenticatedHome();
-        }
-        return;
-      }
-      currentCustomer = null;
-      clearPendingIntent_();
-      if (intent === 'first') {
-        newUser();
-      } else {
-        showAccountChoice('このLINEアカウントの利用登録が確認できませんでした。初めて利用する方は「初めて利用する方はこちら」からお進みください。');
-      }
-    } catch (error) {
-      console.error(error);
-      showAccountChoice(error && error.message ? error.message : '利用登録の確認に失敗しました。もう一度お試しください。');
-    }
   }
 
   function linkExistingAccount() {
@@ -3440,18 +3296,19 @@ function apiCall(method, payload) {
       });
   }
 
-  // 日程を選んだ後に利用状況を選択してもらう。ここではまだログインしない。
+  // 予約開始：登録済みユーザーだけがここまで進める
   function startReservation() {
-    if (!selectedSchedule) {
-      alert('予約する日程を選択してください。');
+    if (!selectedSchedule) return;
+    if (!lineIdToken || !currentCustomer) {
+      alert('利用登録が確認できません。先に利用登録を行ってください。');
+      showUnregisteredGate();
       return;
     }
-    showAccountChoice();
+    openReservationArea(currentCustomer.participantName);
   }
 
   function openReservationArea(participantName) {
     if (!selectedSchedule || !currentCustomer) return;
-
     hideAllAreas();
     document.getElementById('reservationArea').style.display = 'block';
     document.getElementById('reservationContent').textContent = selectedSchedule.content || '';
@@ -3463,21 +3320,123 @@ function apiCall(method, payload) {
     renderContentQuestions_();
   }
 
+  function renderContentQuestions_() {
+    const area = document.getElementById('contentQuestionsArea');
+    if (!area) return;
+    const content = selectedSchedule ? String(selectedSchedule.content || '') : '';
+    let fields = [];
+    if (content === 'ワタデンサッカーフェスタ' || content === 'AC Lazuli チーム活動' || content === '平日スクール体験') {
+      fields = [
+        {id:'eventParticipantName', label:'参加者氏名', type:'text', required:true, value: currentCustomer ? currentCustomer.participantName : ''},
+        {id:'eventParticipantKana', label:'ふりがな', type:'text', required:true, value: currentCustomer ? currentCustomer.kana : ''},
+        {id:'eventSchool', label:'所属園・小学校', type:'text', required:true},
+        {id:'eventClub', label:'所属クラブ', type:'select', required:true, options:['なし','あり']},
+        {id:'eventClubName', label:'クラブ名', type:'text', required:true, conditional:true},
+        {id:'eventSource', label:'ワタデンフィールドを知ったきっかけ', type:'select', required:true, options:['チラシ','紹介','Instagram','ホームページ','イベント','その他']}
+      ];
+    } else if (content === 'ホリデーサッカー') {
+      fields = [
+        {id:'eventParticipantName', label:'参加者氏名', type:'text', required:true, value: currentCustomer ? currentCustomer.participantName : ''},
+        {id:'eventParticipantKana', label:'ふりがな', type:'text', required:true, value: currentCustomer ? currentCustomer.kana : ''},
+        {id:'eventSchool', label:'所属園', type:'text', required:true},
+        {id:'eventClub', label:'所属クラブ', type:'select', required:true, options:['なし','あり']},
+        {id:'eventClubName', label:'クラブ名', type:'text', required:true, conditional:true},
+        {id:'eventSource', label:'ワタデンフィールドを知ったきっかけ', type:'select', required:true, options:['チラシ','紹介','Instagram','ホームページ','イベント','その他']}
+      ];
+    } else if (content === '家族サッカー') {
+      fields = [
+        {id:'eventParticipantName', label:'参加者氏名（代表者）', type:'text', required:true, value: currentCustomer ? currentCustomer.participantName : ''},
+        {id:'eventParticipantKana', label:'ふりがな', type:'text', required:true, value: currentCustomer ? currentCustomer.kana : ''},
+        {id:'eventPeopleCount', label:'参加人数', type:'select', required:true, options:['1名','2名','3名','4名','5名','6名以上']}
+      ];
+    } else if (content === '個サル') {
+      fields = [
+        {id:'eventParticipantName', label:'参加者氏名', type:'text', required:true, value: currentCustomer ? currentCustomer.participantName : ''},
+        {id:'eventParticipantKana', label:'ふりがな', type:'text', required:true, value: currentCustomer ? currentCustomer.kana : ''},
+        {id:'eventSource', label:'ワタデンフィールドを知ったきっかけ', type:'select', required:true, options:['チラシ','紹介','Instagram','ホームページ','イベント','その他']}
+      ];
+    }
+    area.innerHTML = '<div class="section-title">' + escapeHtml_(content) + 'の質問</div>' + fields.map(function(f) {
+      const req = f.required ? '<span class="required">必須</span>' : '<span class="optional">任意</span>';
+      const style = f.conditional ? ' style="display:none"' : '';
+      let control = '';
+      if (f.type === 'select') {
+        control = '<select id="' + f.id + '" class="form-select"' + (f.id === 'eventClub' ? ' onchange="toggleEventClubName_()"' : '') + '><option value="">選択してください</option>' + f.options.map(function(o){return '<option value="' + escapeHtml_(o) + '">' + escapeHtml_(o) + '</option>';}).join('') + '</select>';
+      } else {
+        control = '<input type="text" id="' + f.id + '" class="form-input" value="' + escapeHtml_(f.value || '') + '" placeholder="' + escapeHtml_(f.label) + 'を入力してください">';
+      }
+      return '<div' + style + ' id="wrap_' + f.id + '"><label class="form-label">' + escapeHtml_(f.label) + ' ' + req + '</label>' + control + '</div>';
+    }).join('');
+    const memoLabel = document.getElementById('reservationMemoLabel');
+    if (memoLabel) memoLabel.textContent = content === '家族サッカー' ? '備考欄（任意）' : '備考欄（任意）';
+  }
+
+  function escapeHtml_(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+    });
+  }
+
+  function toggleEventClubName_() {
+    const club = document.getElementById('eventClub');
+    const wrap = document.getElementById('wrap_eventClubName');
+    if (!club || !wrap) return;
+    wrap.style.display = club.value === 'あり' ? 'block' : 'none';
+    if (club.value !== 'あり') {
+      const name = document.getElementById('eventClubName');
+      if (name) name.value = '';
+    }
+  }
+
+  function collectContentAnswers_() {
+    const content = selectedSchedule ? String(selectedSchedule.content || '') : '';
+    const ids = ['eventParticipantName','eventParticipantKana','eventSchool','eventClub','eventClubName','eventSource','eventPeopleCount'];
+    const answers = {};
+    ids.forEach(function(id) {
+      const el = document.getElementById(id);
+      if (el && el.value.trim()) answers[el.previousElementSibling ? el.previousElementSibling.textContent.replace('必須','').replace('任意','').trim() : id] = el.value.trim();
+    });
+    if (!answers['参加者氏名'] && !answers['参加者氏名（代表者）']) {
+      const name = document.getElementById('eventParticipantName');
+      if (name && name.value.trim()) answers[content === '家族サッカー' ? '参加者氏名（代表者）' : '参加者氏名'] = name.value.trim();
+    }
+    return answers;
+  }
+
+  function validateContentQuestions_() {
+    const content = selectedSchedule ? String(selectedSchedule.content || '') : '';
+    const requiredIds = ['eventParticipantName','eventParticipantKana'];
+    if (content === 'ワタデンサッカーフェスタ' || content === 'AC Lazuli チーム活動' || content === '平日スクール体験') requiredIds.push('eventSchool','eventClub','eventSource');
+    if (content === 'ホリデーサッカー') requiredIds.push('eventSchool','eventClub','eventSource');
+    if (content === '家族サッカー') requiredIds.push('eventPeopleCount');
+    if (content === '個サル') requiredIds.push('eventSource');
+    if (document.getElementById('eventClub') && document.getElementById('eventClub').value === 'あり') requiredIds.push('eventClubName');
+    for (const id of requiredIds) {
+      const el = document.getElementById(id);
+      if (!el || !el.value.trim()) {
+        const labels = {eventParticipantName:'参加者氏名',eventParticipantKana:'ふりがな',eventSchool:'所属園・小学校',eventClub:'所属クラブの有無',eventClubName:'クラブ名',eventSource:'ワタデンフィールドを知ったきっかけ',eventPeopleCount:'参加人数'};
+        alert((labels[id] || '必須項目') + 'を入力・選択してください。');
+        if (el) el.focus();
+        return false;
+      }
+    }
+    return true;
+  }
+
   function confirmReservation() {
     if (!selectedSchedule || !currentCustomer) return;
-    let answers;
-    try { answers = collectContentAnswers_(); } catch (error) { alert(error.message); return; }
+    if (!validateContentQuestions_()) return;
     const memo = document.getElementById('reservationMemo').value.trim();
+    const answers = collectContentAnswers_();
+    const summary = Object.keys(answers).map(function(k){return k + '：' + answers[k];}).join('\n');
     hideAllAreas();
     document.getElementById('confirmArea').style.display = 'block';
     document.getElementById('confirmContent').textContent = selectedSchedule.content || '';
     document.getElementById('confirmDate').textContent = formatDate(selectedSchedule.date);
     document.getElementById('confirmTime').textContent = (selectedSchedule.start || '') + '〜' + (selectedSchedule.end || '');
-    document.getElementById('confirmName').textContent = answers.reservationParticipant || '';
+    document.getElementById('confirmName').textContent = answers['参加者氏名'] || answers['参加者氏名（代表者）'] || currentCustomer.participantName || '';
     document.getElementById('confirmPhone').textContent = currentCustomer.phone || '';
-    document.getElementById('confirmMemo').textContent = memo || 'なし';
-    const summary = document.getElementById('confirmContentAnswers');
-    if (summary) summary.textContent = Object.keys(answers).filter(function(k){return answers[k];}).map(function(k){return k.replace('reservation','') + '：' + answers[k];}).join(' / ');
+    document.getElementById('confirmMemo').textContent = [summary, memo ? '備考：' + memo : ''].filter(Boolean).join('\n') || 'なし';
   }
 
   function submitReservation() {
@@ -3486,9 +3445,11 @@ function apiCall(method, payload) {
       return;
     }
 
+    if (!validateContentQuestions_()) return;
     const memo = document.getElementById('reservationMemo').value.trim();
-    let contentAnswers;
-    try { contentAnswers = collectContentAnswers_(); } catch (error) { alert(error.message); return; }
+    const answers = collectContentAnswers_();
+    const answersText = Object.keys(answers).map(function(k){return k + '：' + answers[k];}).join('\n');
+    const combinedMemo = [answersText, memo ? '備考：' + memo : ''].filter(Boolean).join('\n');
     const data = {
       idToken: lineIdToken,
       scheduleId: selectedSchedule.id,
@@ -3497,11 +3458,7 @@ function apiCall(method, payload) {
       end: selectedSchedule.end || '',
       content: selectedSchedule.content || '',
       type: selectedSchedule.type || '',
-      memo: memo,
-      contentAnswers: contentAnswers,
-      participantName: contentAnswers.reservationParticipant,
-      kana: contentAnswers.reservationKana,
-      email: currentCustomer.email || ''
+      memo: combinedMemo
     };
 
     const button = document.querySelector('#confirmArea .reserve-button');
@@ -3533,7 +3490,7 @@ function apiCall(method, payload) {
       });
   }
 
-  // 初回登録は基本情報だけ。コンテンツ固有の質問は予約時に入力
+  // 初回登録は「予約と同時」ではなく、先に会員登録だけを行う
   function submitNewRegistration() {
     const participantName = document.getElementById('registrationParticipantName').value.trim();
     const kana = document.getElementById('registrationKana').value.trim();
@@ -3542,16 +3499,9 @@ function apiCall(method, payload) {
     if (!lineIdToken) return alert('LINEログイン情報を取得できません。');
     if (!participantName) return alert('利用者氏名を入力してください。');
     if (!kana) return alert('ふりがなを入力してください。');
-    if (!email || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) return alert('有効なメールアドレスを入力してください。');
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return alert('有効なメールアドレスを入力してください。');
     if (!phone) return alert('緊急連絡先を入力してください。');
-
-    const data = {
-      idToken: lineIdToken,
-      participantName: participantName,
-      kana: kana,
-      email: email,
-      phone: phone
-    };
+    const data = { idToken: lineIdToken, participantName: participantName, kana: kana, email: email, phone: phone };
     const button = document.querySelector('#newRegistrationArea .reserve-button');
     if (button) { button.disabled = true; button.textContent = '登録中…'; }
     apiCall('registerCustomer', data).then(function(result) {
@@ -3559,98 +3509,12 @@ function apiCall(method, payload) {
       if (!result || !result.success || !result.customer) return alert('利用登録に失敗しました。');
       currentCustomer = result.customer;
       miniAppReady = true;
-      if (!selectedSchedule) restorePendingSchedule_();
-      if (selectedSchedule) {
-        openReservationArea(currentCustomer.participantName);
-        clearPendingSchedule_();
-      } else showAuthenticatedHome();
-      alert('利用登録が完了しました。次回から自動でご利用いただけます。');
+      showAuthenticatedHome();
+      alert('利用登録が完了しました。次回からはLINEでそのまま予約できます。');
     }).catch(function(error) {
       if (button) { button.disabled = false; button.textContent = '利用登録する'; }
       alert(error && error.message ? error.message : '利用登録に失敗しました。');
     });
-  }
-
-  function renderContentQuestions_() {
-    const host = document.getElementById('contentQuestions');
-    if (!host) return;
-    const content = (selectedSchedule && selectedSchedule.content) || selectedContent || '';
-    const schoolLabel = content === 'ホリデーサッカー' ? '所属園' : '所属園・小学校';
-    let fields = [];
-    if (['ワタデンサッカーフェスタ','AC Lazuli チーム活動','平日スクール体験'].includes(content)) {
-      fields = [
-        ['reservationParticipant','参加者氏名','text',true],
-        ['reservationKana','ふりがな','text',true],
-        ['reservationSchool',schoolLabel,'text',true],
-        ['reservationClub','所属クラブ','select',true],
-        ['reservationSource','ワタデンフィールドを知ったきっかけ','select-source',true]
-      ];
-    } else if (content === 'ホリデーサッカー') {
-      fields = [
-        ['reservationParticipant','参加者氏名','text',true],
-        ['reservationKana','ふりがな','text',true],
-        ['reservationSchool','所属園','text',true],
-        ['reservationClub','所属クラブ','select',true],
-        ['reservationSource','ワタデンフィールドを知ったきっかけ','select-source',true]
-      ];
-    } else if (content === '家族サッカー') {
-      fields = [
-        ['reservationParticipant','参加者氏名','text',true],
-        ['reservationKana','ふりがな','text',true],
-        ['reservationPeople','参加人数','number',true]
-      ];
-    } else if (content === '個サル') {
-      fields = [
-        ['reservationParticipant','参加者氏名','text',true],
-        ['reservationKana','ふりがな','text',true],
-        ['reservationSource','ワタデンフィールドを知ったきっかけ','select-source',true]
-      ];
-    }
-    host.innerHTML = '<div class="section-title">予約内容の質問</div>' + fields.map(function(f) {
-      let control = '';
-      if (f[2] === 'select') control = '<select id="'+f[0]+'" class="form-select" onchange="toggleReservationClub_()"><option value="">選択してください</option><option value="なし">なし</option><option value="あり">あり</option></select><div id="reservationClubNameArea" style="display:none"><label class="form-label">クラブ名 <span class="required">必須</span></label><input id="reservationClubName" class="form-input" type="text"></div>';
-      else if (f[2] === 'select-source') control = '<select id="'+f[0]+'" class="form-select"><option value="">選択してください</option><option>チラシ</option><option>紹介</option><option>Instagram</option><option>SNS</option><option>検索サイト</option><option>知人・家族</option><option>その他</option></select>';
-      else control = '<input id="'+f[0]+'" class="form-input" type="'+f[2]+'" '+(f[2]==='number'?'min="1"':'')+' placeholder="'+f[1]+'を入力してください">';
-      return '<label class="form-label">'+f[1]+' <span class="required">必須</span></label>'+control;
-    }).join('') + (content === '家族サッカー' ? '' : '');
-    if (content === '家族サッカー') {
-      const memoLabel = document.getElementById('reservationMemoLabel');
-      if (memoLabel) memoLabel.textContent = '備考欄（任意）';
-    } else {
-      const memoLabel = document.getElementById('reservationMemoLabel');
-      if (memoLabel) memoLabel.textContent = '備考（任意）';
-    }
-    const name = document.getElementById('reservationParticipant');
-    const kana = document.getElementById('reservationKana');
-    if (name) name.value = (currentCustomer && currentCustomer.participantName) || '';
-    if (kana) kana.value = (currentCustomer && currentCustomer.kana) || '';
-  }
-
-  function toggleReservationClub_() {
-    const club = document.getElementById('reservationClub');
-    const area = document.getElementById('reservationClubNameArea');
-    if (area) area.style.display = club && club.value === 'あり' ? 'block' : 'none';
-  }
-
-  function collectContentAnswers_() {
-    const content = (selectedSchedule && selectedSchedule.content) || selectedContent || '';
-    const ids = ['reservationParticipant','reservationKana','reservationSchool','reservationClub','reservationClubName','reservationSource','reservationPeople'];
-    const answers = {};
-    ids.forEach(function(id) {
-      const el = document.getElementById(id);
-      if (el) answers[id] = el.value.trim();
-    });
-    if (!answers.reservationParticipant) throw new Error('参加者氏名を入力してください。');
-    if (!answers.reservationKana) throw new Error('ふりがなを入力してください。');
-    if (answers.reservationClub === 'あり' && !answers.reservationClubName) throw new Error('クラブ名を入力してください。');
-    if (['ワタデンサッカーフェスタ','ホリデーサッカー','AC Lazuli チーム活動','平日スクール体験'].includes(content)) {
-      if (!answers.reservationSchool) throw new Error('所属先を入力してください。');
-      if (!answers.reservationClub) throw new Error('所属クラブの有無を選択してください。');
-      if (!answers.reservationSource) throw new Error('知ったきっかけを選択してください。');
-    }
-    if (content === '個サル' && !answers.reservationSource) throw new Error('知ったきっかけを選択してください。');
-    if (content === '家族サッカー' && (!answers.reservationPeople || Number(answers.reservationPeople) < 1)) throw new Error('参加人数を入力してください。');
-    return answers;
   }
 
   function newUser() {
@@ -3659,7 +3523,7 @@ function apiCall(method, payload) {
   }
 
   function backToRegistrationCheck() {
-    showAccountChoice();
+    showUnregisteredGate();
   }
 
   function hideAllAreas() {
@@ -3675,13 +3539,13 @@ function apiCall(method, payload) {
   }
 
   function goHome() {
-    selectedContent = '';
-    selectedSchoolType = '';
     if (!currentCustomer || !lineIdToken) {
-      showPublicHome();
+      showUnregisteredGate();
       return;
     }
-    showAuthenticatedHome();
+    selectedContent = '';
+    hideAllAreas();
+    document.getElementById('home').style.display = 'block';
   }
 </script>
 
