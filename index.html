@@ -1349,7 +1349,9 @@
     <section
       id="registrationCheckArea"
       class="detail-area"
-      style="display:block;">
+      style="display:none;">
+
+      <button class="back-button" type="button" onclick="backToDetail()">← 予約内容に戻る</button>
 
       <div class="detail-card">
 
@@ -3177,9 +3179,8 @@ function apiCall(method, payload) {
   });
 
   async function initializeWatadenMiniApp() {
-    setAuthMessage('LINEアカウントを確認しています…');
     hideAllAreas();
-    document.getElementById('registrationCheckArea').style.display = 'block';
+    setAuthMessage('LINEアカウントを確認しています…');
 
     try {
       await liff.init({ liffId: WATADEN_LIFF_ID });
@@ -3194,37 +3195,39 @@ function apiCall(method, payload) {
         throw new Error('LINEログイン情報を取得できませんでした。');
       }
 
-      // 予定取得
-      apiCall('getSchedules')
-        .then(function(data) {
-          schedules = data || [];
-        })
-        .catch(function(error) {
-          console.error(error);
-          alert('予定の読み込みに失敗しました。');
-        });
+      // 予定一覧を先に読み込んでからコンテンツ選択画面を表示します。
+      try {
+        const scheduleResult = await apiCall('getSchedules');
+        schedules = Array.isArray(scheduleResult) ? scheduleResult : [];
+      } catch (scheduleError) {
+        console.error(scheduleError);
+        schedules = [];
+        alert('予定の読み込みに失敗しました。時間をおいて再度お試しください。');
+      }
 
-      // 会員判定は必ずサーバー側でIDトークンを検証
-      apiCall('getLineAccountStatus', lineIdToken)
-        .then(function(result) {
-          miniAppReady = true;
+      // 登録済みかどうかは確認しますが、未登録でも最初はコンテンツ選択画面へ進めます。
+      try {
+        const result = await apiCall('getLineAccountStatus', lineIdToken);
+        if (result && result.registered && result.customer) {
+          currentCustomer = result.customer;
+        } else {
+          currentCustomer = null;
+        }
+      } catch (statusError) {
+        console.error(statusError);
+        currentCustomer = null;
+      }
 
-          if (result && result.registered) {
-            currentCustomer = result.customer;
-            showAuthenticatedHome();
-            return;
-          }
-
-          showUnregisteredGate();
-        })
-        .catch(function(error) {
-          console.error(error);
-          setAuthMessage('LINEアカウントの確認に失敗しました。ページを閉じて、もう一度お試しください。');
-        });
+      miniAppReady = true;
+      showAuthenticatedHome();
 
     } catch (error) {
       console.error(error);
-      setAuthMessage('ミニアプリのログインに失敗しました。LIFF設定を確認してください。');
+      hideAllAreas();
+      document.getElementById('registrationCheckArea').style.display = 'block';
+      setAuthMessage('LINEの初期化に失敗しました。LINE公式アカウントのリッチメニューから開き直してください。');
+      document.getElementById('existingLinkArea').style.display = 'none';
+      document.getElementById('newAccountButtonArea').style.display = 'none';
     }
   }
 
@@ -3279,8 +3282,13 @@ function apiCall(method, payload) {
 
         if (result && result.success && result.customer) {
           currentCustomer = result.customer;
-          showAuthenticatedHome();
-          alert('登録情報の連携が完了しました。次回から自動でログインされます。');
+          miniAppReady = true;
+          alert('登録情報の連携が完了しました。予約入力へ進みます。');
+          if (selectedSchedule) {
+            openReservationArea(currentCustomer.participantName);
+          } else {
+            showAuthenticatedHome();
+          }
           return;
         }
 
@@ -3298,12 +3306,21 @@ function apiCall(method, payload) {
 
   // 予約開始：登録済みユーザーだけがここまで進める
   function startReservation() {
-    if (!selectedSchedule) return;
-    if (!lineIdToken || !currentCustomer) {
-      alert('利用登録が確認できません。先に利用登録を行ってください。');
+    if (!selectedSchedule) {
+      alert('予約する予定を選択してください。');
+      return;
+    }
+
+    if (!lineIdToken) {
+      alert('LINEログイン情報を取得できません。LINE公式アカウントのリッチメニューから開き直してください。');
+      return;
+    }
+
+    if (!currentCustomer) {
       showUnregisteredGate();
       return;
     }
+
     openReservationArea(currentCustomer.participantName);
   }
 
@@ -3509,8 +3526,12 @@ function apiCall(method, payload) {
       if (!result || !result.success || !result.customer) return alert('利用登録に失敗しました。');
       currentCustomer = result.customer;
       miniAppReady = true;
-      showAuthenticatedHome();
-      alert('利用登録が完了しました。次回からはLINEでそのまま予約できます。');
+      alert('利用登録が完了しました。選択した内容の予約入力へ進みます。');
+      if (selectedSchedule) {
+        openReservationArea(currentCustomer.participantName);
+      } else {
+        showAuthenticatedHome();
+      }
     }).catch(function(error) {
       if (button) { button.disabled = false; button.textContent = '利用登録する'; }
       alert(error && error.message ? error.message : '利用登録に失敗しました。');
@@ -3539,11 +3560,9 @@ function apiCall(method, payload) {
   }
 
   function goHome() {
-    if (!currentCustomer || !lineIdToken) {
-      showUnregisteredGate();
-      return;
-    }
     selectedContent = '';
+    selectedSchoolType = '';
+    selectedSchedule = null;
     hideAllAreas();
     document.getElementById('home').style.display = 'block';
   }
