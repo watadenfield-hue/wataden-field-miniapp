@@ -3346,19 +3346,19 @@ function apiCall(method, payload) {
       fields = [
         {id:'eventParticipantName', label:'参加者氏名', type:'text', required:true, value: currentCustomer ? currentCustomer.participantName : ''},
         {id:'eventParticipantKana', label:'ふりがな', type:'text', required:true, value: currentCustomer ? currentCustomer.kana : ''},
-        {id:'eventSchool', label:'所属園・小学校', type:'text', required:true},
-        {id:'eventClub', label:'所属クラブ', type:'select', required:true, options:['なし','あり']},
-        {id:'eventClubName', label:'クラブ名', type:'text', required:true, conditional:true},
-        {id:'eventSource', label:'ワタデンフィールドを知ったきっかけ', type:'select', required:true, options:['チラシ','紹介','Instagram','ホームページ','イベント','その他']}
+        {id:'eventSchool', label:'所属園・小学校', type:'text', required:true, value: currentCustomer ? currentCustomer.school : ''},
+        {id:'eventClub', label:'所属クラブ', type:'select', required:true, value: currentCustomer ? currentCustomer.clubStatus : '', options:['なし','あり']},
+        {id:'eventClubName', label:'クラブ名', type:'text', required:true, conditional:true, value: currentCustomer ? currentCustomer.clubName : ''},
+        {id:'eventSource', label:'ワタデンフィールドを知ったきっかけ', type:'select', required:true, value: currentCustomer ? currentCustomer.source : '', options:['チラシ','紹介','Instagram','ホームページ','イベント','その他']}
       ];
     } else if (content === 'ホリデーサッカー') {
       fields = [
         {id:'eventParticipantName', label:'参加者氏名', type:'text', required:true, value: currentCustomer ? currentCustomer.participantName : ''},
         {id:'eventParticipantKana', label:'ふりがな', type:'text', required:true, value: currentCustomer ? currentCustomer.kana : ''},
-        {id:'eventSchool', label:'所属園', type:'text', required:true},
-        {id:'eventClub', label:'所属クラブ', type:'select', required:true, options:['なし','あり']},
-        {id:'eventClubName', label:'クラブ名', type:'text', required:true, conditional:true},
-        {id:'eventSource', label:'ワタデンフィールドを知ったきっかけ', type:'select', required:true, options:['チラシ','紹介','Instagram','ホームページ','イベント','その他']}
+        {id:'eventSchool', label:'所属園', type:'text', required:true, value: currentCustomer ? currentCustomer.school : ''},
+        {id:'eventClub', label:'所属クラブ', type:'select', required:true, value: currentCustomer ? currentCustomer.clubStatus : '', options:['なし','あり']},
+        {id:'eventClubName', label:'クラブ名', type:'text', required:true, conditional:true, value: currentCustomer ? currentCustomer.clubName : ''},
+        {id:'eventSource', label:'ワタデンフィールドを知ったきっかけ', type:'select', required:true, value: currentCustomer ? currentCustomer.source : '', options:['チラシ','紹介','Instagram','ホームページ','イベント','その他']}
       ];
     } else if (content === '家族サッカー') {
       fields = [
@@ -3370,22 +3370,35 @@ function apiCall(method, payload) {
       fields = [
         {id:'eventParticipantName', label:'参加者氏名', type:'text', required:true, value: currentCustomer ? currentCustomer.participantName : ''},
         {id:'eventParticipantKana', label:'ふりがな', type:'text', required:true, value: currentCustomer ? currentCustomer.kana : ''},
-        {id:'eventSource', label:'ワタデンフィールドを知ったきっかけ', type:'select', required:true, options:['チラシ','紹介','Instagram','ホームページ','イベント','その他']}
+        {id:'eventSource', label:'ワタデンフィールドを知ったきっかけ', type:'select', required:true, value: currentCustomer ? currentCustomer.source : '', options:['チラシ','紹介','Instagram','ホームページ','イベント','その他']}
       ];
     }
+    // 所属情報が顧客マスターに保存済みなら、2回目以降は入力項目自体を省略する。
+    // 初回など未保存の項目がある場合だけ入力欄を表示する。
+    const hasSavedProfile = !!(currentCustomer &&
+      String(currentCustomer.school || '').trim() &&
+      String(currentCustomer.clubStatus || '').trim() &&
+      String(currentCustomer.source || '').trim());
+    if (hasSavedProfile) {
+      fields = fields.filter(function(f) {
+        return ['eventSchool', 'eventClub', 'eventClubName', 'eventSource'].indexOf(f.id) === -1;
+      });
+    }
+
     area.innerHTML = '<div class="section-title">' + escapeHtml_(content) + 'の質問</div>' + fields.map(function(f) {
       const req = f.required ? '<span class="required">必須</span>' : '<span class="optional">任意</span>';
       const style = f.conditional ? ' style="display:none"' : '';
       let control = '';
       if (f.type === 'select') {
-        control = '<select id="' + f.id + '" class="form-select"' + (f.id === 'eventClub' ? ' onchange="toggleEventClubName_()"' : '') + '><option value="">選択してください</option>' + f.options.map(function(o){return '<option value="' + escapeHtml_(o) + '">' + escapeHtml_(o) + '</option>';}).join('') + '</select>';
+        control = '<select id="' + f.id + '" class="form-select"' + (f.id === 'eventClub' ? ' onchange="toggleEventClubName_()"' : '') + '><option value="">選択してください</option>' + f.options.map(function(o){return '<option value="' + escapeHtml_(o) + '"' + (String(f.value || '') === String(o) ? ' selected' : '') + '>' + escapeHtml_(o) + '</option>';}).join('') + '</select>';
       } else {
         control = '<input type="text" id="' + f.id + '" class="form-input" value="' + escapeHtml_(f.value || '') + '" placeholder="' + escapeHtml_(f.label) + 'を入力してください">';
       }
       return '<div' + style + ' id="wrap_' + f.id + '"><label class="form-label">' + escapeHtml_(f.label) + ' ' + req + '</label>' + control + '</div>';
     }).join('');
+    toggleEventClubName_();
     const memoLabel = document.getElementById('reservationMemoLabel');
-    if (memoLabel) memoLabel.textContent = content === '家族サッカー' ? '備考欄（任意）' : '備考欄（任意）';
+    if (memoLabel) memoLabel.textContent = '備考欄（任意）';
   }
 
   function escapeHtml_(value) {
@@ -3475,7 +3488,13 @@ function apiCall(method, payload) {
       end: selectedSchedule.end || '',
       content: selectedSchedule.content || '',
       type: selectedSchedule.type || '',
-      memo: combinedMemo
+      memo: combinedMemo,
+      profile: {
+        school: document.getElementById('eventSchool') ? document.getElementById('eventSchool').value.trim() : '',
+        clubStatus: document.getElementById('eventClub') ? document.getElementById('eventClub').value.trim() : '',
+        clubName: document.getElementById('eventClubName') ? document.getElementById('eventClubName').value.trim() : '',
+        source: document.getElementById('eventSource') ? document.getElementById('eventSource').value.trim() : ''
+      }
     };
 
     const button = document.querySelector('#confirmArea .reserve-button');
