@@ -3441,7 +3441,16 @@ function apiCall(method, payload) {
     if (content === '家族サッカー') requiredIds.push('eventPeopleCount');
     if (content === '個サル') requiredIds.push('eventSource');
     if (document.getElementById('eventClub') && document.getElementById('eventClub').value === 'あり') requiredIds.push('eventClubName');
-    for (const id of requiredIds) {
+
+    // 画面に表示されていない質問は必須チェックの対象にしない。
+    // 登録済みの所属情報など、入力欄自体を省略した項目で予約が止まる不具合を防ぐ。
+    const visibleRequiredIds = requiredIds.filter(function(id) {
+      const el = document.getElementById(id);
+      if (!el) return false;
+      const wrapper = el.closest('[id^="wrap_"]');
+      return !wrapper || wrapper.style.display !== 'none';
+    });
+    for (const id of visibleRequiredIds) {
       const el = document.getElementById(id);
       if (!el || !el.value.trim()) {
         const labels = {eventParticipantName:'参加者氏名',eventParticipantKana:'ふりがな',eventSchool:'所属園・小学校',eventClub:'所属クラブの有無',eventClubName:'クラブ名',eventSource:'ワタデンフィールドを知ったきっかけ',eventPeopleCount:'参加人数'};
