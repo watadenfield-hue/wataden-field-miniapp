@@ -2501,26 +2501,6 @@ function selectContent(content) {
         return;
       }
 
-      if (!school) {
-        alert("所属園・小学校を入力してください。");
-        return;
-      }
-
-      if (!club) {
-        alert("所属サッカークラブの有無を選択してください。");
-        return;
-      }
-
-      if (club === "あり" && !clubName) {
-        alert("サッカークラブ名を入力してください。");
-        return;
-      }
-
-      if (!source) {
-        alert("ワタデンフィールドを知ったきっかけを選択してください。");
-        return;
-      }
-
       if (!selectedSchedule) {
         alert("予約する予定が選択されていません。");
         return;
@@ -3373,13 +3353,11 @@ function apiCall(method, payload) {
         {id:'eventSource', label:'ワタデンフィールドを知ったきっかけ', type:'select', required:true, value: currentCustomer ? currentCustomer.source : '', options:['チラシ','紹介','Instagram','ホームページ','イベント','その他']}
       ];
     }
-    // 所属情報が顧客マスターに保存済みなら、2回目以降は入力項目自体を省略する。
-    // 初回など未保存の項目がある場合だけ入力欄を表示する。
-    const hasSavedProfile = !!(currentCustomer &&
-      String(currentCustomer.school || '').trim() &&
-      String(currentCustomer.clubStatus || '').trim() &&
-      String(currentCustomer.source || '').trim());
-    if (hasSavedProfile) {
+    // 利用登録が済んでいるユーザーには、登録時の所属情報を予約ごとに再質問しない。
+    // 顧客マスターの値が一部空でも、2回目以降の予約で所属項目を必須にしない。
+    // 参加人数など、コンテンツごとの予約時質問はそのまま表示する。
+    const isRegisteredCustomer = !!(currentCustomer && currentCustomer.participantName);
+    if (isRegisteredCustomer) {
       fields = fields.filter(function(f) {
         return ['eventSchool', 'eventClub', 'eventClubName', 'eventSource'].indexOf(f.id) === -1;
       });
@@ -3436,11 +3414,15 @@ function apiCall(method, payload) {
   function validateContentQuestions_() {
     const content = selectedSchedule ? String(selectedSchedule.content || '') : '';
     const requiredIds = ['eventParticipantName','eventParticipantKana'];
-    if (content === 'ワタデンサッカーフェスタ' || content === 'AC Lazuli チーム活動' || content === '平日スクール体験') requiredIds.push('eventSchool','eventClub','eventSource');
-    if (content === 'ホリデーサッカー') requiredIds.push('eventSchool','eventClub','eventSource');
+    // 所属園・学校、クラブ、認知経路は初回登録で扱う情報。
+    // 登録済みユーザーの予約時必須項目には含めない。
+    if (!currentCustomer) {
+      if (content === 'ワタデンサッカーフェスタ' || content === 'AC Lazuli チーム活動' || content === '平日スクール体験') requiredIds.push('eventSchool','eventClub','eventSource');
+      if (content === 'ホリデーサッカー') requiredIds.push('eventSchool','eventClub','eventSource');
+      if (content === '個サル') requiredIds.push('eventSource');
+      if (document.getElementById('eventClub') && document.getElementById('eventClub').value === 'あり') requiredIds.push('eventClubName');
+    }
     if (content === '家族サッカー') requiredIds.push('eventPeopleCount');
-    if (content === '個サル') requiredIds.push('eventSource');
-    if (document.getElementById('eventClub') && document.getElementById('eventClub').value === 'あり') requiredIds.push('eventClubName');
 
     // 画面に表示されていない質問は必須チェックの対象にしない。
     // 登録済みの所属情報など、入力欄自体を省略した項目で予約が止まる不具合を防ぐ。
