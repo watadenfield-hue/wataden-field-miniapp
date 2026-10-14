@@ -1084,14 +1084,14 @@
 
         <button
           class="category"
-          onclick="selectContent('AC Lazuli チーム活動')">
+          onclick="selectContent('AC Lazuli 体験')">
 
           <span class="category-icon" aria-hidden="true">
             <svg viewBox="0 0 64 64" class="content-svg"><path d="M32 8 52 16v16c0 13-8 20-20 24C20 52 12 45 12 32V16L32 8Z"/><path d="M22 31l7 7 14-15"/></svg>
           </span>
 
-          AC Lazuli チーム活動
-          <span class="category-description">対象：1〜2年生</span>
+          AC Lazuli 体験
+          <span class="category-description">対象：小学1〜2年生<br><strong>チーム活動（土日）</strong></span>
 
         </button>
 
@@ -1756,7 +1756,7 @@
   const area = document.getElementById('calendarArea');
   if (!area) return;
   area.classList.remove('calendar-lazuli','calendar-wataden','calendar-holiday','calendar-school','calendar-family','calendar-kosaru');
-  if (content === 'AC Lazuli チーム活動') area.classList.add('calendar-lazuli');
+  if (content === 'AC Lazuli チーム活動' || content === 'AC Lazuli 体験') area.classList.add('calendar-lazuli');
   else if (content === 'ワタデンサッカーフェスタ') area.classList.add('calendar-wataden');
   else if (content === 'ホリデーサッカー') area.classList.add('calendar-holiday');
   else if (content === '平日スクール体験') area.classList.add('calendar-school');
@@ -1768,6 +1768,12 @@ function selectContent(content) {
 
       selectedContent = content;
       selectedSchoolType = "";
+      // 旧名称で予定マスタに登録された予定も、新しい表示名で扱う。
+      if (content === 'AC Lazuli 体験') {
+        schedules.forEach(function(item) {
+          if (item.content === 'AC Lazuli チーム活動') item.content = 'AC Lazuli 体験';
+        });
+      }
 
       if (content === "平日スクール体験") {
 
@@ -3322,7 +3328,7 @@ function apiCall(method, payload) {
     if (!area) return;
     const content = selectedSchedule ? String(selectedSchedule.content || '') : '';
     let fields = [];
-    if (content === 'ワタデンサッカーフェスタ' || content === 'AC Lazuli チーム活動' || content === '平日スクール体験') {
+    if (content === 'ワタデンサッカーフェスタ' || content === 'AC Lazuli チーム活動' || content === 'AC Lazuli 体験' || content === '平日スクール体験') {
       fields = [
         {id:'eventParticipantName', label:'参加者氏名', type:'text', required:true, value: currentCustomer ? currentCustomer.participantName : ''},
         {id:'eventParticipantKana', label:'ふりがな', type:'text', required:true, value: currentCustomer ? currentCustomer.kana : ''},
@@ -3417,7 +3423,7 @@ function apiCall(method, payload) {
     // 所属園・学校、クラブ、認知経路は初回登録で扱う情報。
     // 登録済みユーザーの予約時必須項目には含めない。
     if (!currentCustomer) {
-      if (content === 'ワタデンサッカーフェスタ' || content === 'AC Lazuli チーム活動' || content === '平日スクール体験') requiredIds.push('eventSchool','eventClub','eventSource');
+      if (content === 'ワタデンサッカーフェスタ' || content === 'AC Lazuli チーム活動' || content === 'AC Lazuli 体験' || content === '平日スクール体験') requiredIds.push('eventSchool','eventClub','eventSource');
       if (content === 'ホリデーサッカー') requiredIds.push('eventSchool','eventClub','eventSource');
       if (content === '個サル') requiredIds.push('eventSource');
       if (document.getElementById('eventClub') && document.getElementById('eventClub').value === 'あり') requiredIds.push('eventClubName');
@@ -3452,7 +3458,7 @@ function apiCall(method, payload) {
     const summary = Object.keys(answers).map(function(k){return k + '：' + answers[k];}).join('\n');
     hideAllAreas();
     document.getElementById('confirmArea').style.display = 'block';
-    document.getElementById('confirmContent').textContent = selectedSchedule.content || '';
+    document.getElementById('confirmContent').textContent = (selectedSchedule.content === 'AC Lazuli チーム活動' ? 'AC Lazuli 体験' : selectedSchedule.content) || '';
     document.getElementById('confirmDate').textContent = formatDate(selectedSchedule.date);
     document.getElementById('confirmTime').textContent = (selectedSchedule.start || '') + '〜' + (selectedSchedule.end || '');
     document.getElementById('confirmName').textContent = answers['参加者氏名'] || answers['参加者氏名（代表者）'] || currentCustomer.participantName || '';
